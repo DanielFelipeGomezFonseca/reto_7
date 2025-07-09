@@ -1,0 +1,155 @@
+import json
+from collections import deque, namedtuple
+from typing import List, Dict
+import os
+
+ItemSpec = namedtuple('ItemSpec', ['name', 'price'])
+
+class MenuItem:
+    def __init__(self, name: str, price: float):
+        self.name = name
+        self.price = price
+
+    def get_total_price(self) -> float:
+        return self.price
+
+    def __str__(self):
+        return f"{self.name} - ${self.price:.2f}"
+
+    def to_dict(self):
+        return {'type': self.__class__.__name__, 'name': self.name, 'price': self.price}
+
+    @staticmethod
+    def from_dict(data):
+        item_type = data.get("type")
+        if item_type == "Beverage":
+            return Beverage(data["name"], data["price"], data.get("is_alcoholic", False))
+        elif item_type == "Appetizer":
+            return Appetizer(data["name"], data["price"], data.get("serves", 1))
+        elif item_type == "MainCourse":
+            return MainCourse(data["name"], data["price"], data.get("is_vegetarian", False))
+        else:
+            return MenuItem(data["name"], data["price"])
+
+class Beverage(MenuItem):
+    def __init__(self, name: str, price: float, is_alcoholic: bool = False):
+        super().__init__(name, price)
+        self.is_alcoholic = is_alcoholic
+
+    def to_dict(self):
+        data = super().to_dict()
+        data["is_alcoholic"] = self.is_alcoholic
+        return data
+
+class Appetizer(MenuItem):
+    def __init__(self, name: str, price: float, serves: int = 1):
+        super().__init__(name, price)
+        self.serves = serves
+
+    def to_dict(self):
+        data = super().to_dict()
+        data["serves"] = self.serves
+        return data
+
+class MainCourse(MenuItem):
+    def __init__(self, name: str, price: float, is_vegetarian: bool = False):
+        super().__init__(name, price)
+        self.is_vegetarian = is_vegetarian
+
+    def to_dict(self):
+        data = super().to_dict()
+        data["is_vegetarian"] = self.is_vegetarian
+        return data
+
+class Order:
+    def __init__(self):
+        self.items: List[MenuItem] = []
+
+    def add_item(self, item: MenuItem):
+        self.items.append(item)
+
+    def calculate_total(self) -> float:
+        total = 0
+        has_main_course = any(isinstance(item, MainCourse) for item in self.items)
+
+        for item in self.items:
+            if isinstance(item, Beverage) and has_main_course:
+                total += item.get_total_price() * 0.9
+            else:
+                total += item.get_total_price()
+
+        if len(self.items) >= 5:
+            total *= 0.9
+
+        return total
+
+    def show_order(self):
+        for item in self.items:
+            print(item)
+        print(f"Total: ${self.calculate_total():.2f}")
+
+    @staticmethod
+    def save_menu(menu: List[MenuItem], filename: str = "menu.json"):
+        with open(filename, "w") as f:
+            json.dump([item.to_dict() for item in menu], f, indent=4)
+
+    @staticmethod
+    def load_menu(filename: str = "menu.json") -> List[MenuItem]:
+        if not os.path.exists(filename):
+            return []
+        with open(filename, "r") as f:
+            data = json.load(f)
+            return [MenuItem.from_dict(item) for item in data]
+
+    @staticmethod
+    def add_menu_item(new_item: MenuItem, filename: str = "menu.json"):
+        menu = Order.load_menu(filename)
+        menu.append(new_item)
+        Order.save_menu(menu, filename)
+
+    @staticmethod
+    def update_menu_item(item_name: str, new_data: Dict, filename: str = "menu.json"):
+        menu = Order.load_menu(filename)
+        for i, item in enumerate(menu):
+            if item.name == item_name:
+                item.name = new_data.get("name", item.name)
+                item.price = new_data.get("price", item.price)
+                if isinstance(item, Beverage):
+                    item.is_alcoholic = new_data.get("is_alcoholic", item.is_alcoholic)
+                elif isinstance(item, Appetizer):
+                    item.serves = new_data.get("serves", item.serves)
+                elif isinstance(item, MainCourse):
+                    item.is_vegetarian = new_data.get("is_vegetarian", item.is_vegetarian)
+                break
+        Order.save_menu(menu, filename)
+
+    @staticmethod
+    def delete_menu_item(item_name: str, filename: str = "menu.json"):
+        menu = Order.load_menu(filename)
+        menu = [item for item in menu if item.name != item_name]
+        Order.save_menu(menu, filename)
+
+
+class Payment:
+    def __init__(self, order: Order, payment_method: str):
+        self.order = order
+        self.payment_method = payment_method
+        self.paid = False
+
+    def process_payment(self):
+        self.paid = True
+        print(f"Payment of ${self.order.calculate_total():.2f} processed using {self.payment_method}.")
+
+orders_queue = deque()
+
+initial_menu = [
+    Beverage("Agua mineral", 1.50),
+    Beverage("Vino tinto", 4.00, is_alcoholic=True),
+    Appetizer("Bruschetta", 3.50, serves=2),
+    MainCourse("Pizza Margarita", 9.00, is_vegetarian=True)
+]
+
+Order.save_menu(initial_menu)
+
+item_summary = ItemSpec("Té helado", 2.50)
+print(f"Spec rápida: {item_summary.name} - ${item_summary.price}")
